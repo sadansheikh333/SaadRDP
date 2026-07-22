@@ -85,16 +85,19 @@ jobs:
         Test-NetConnection $env:TAILSCALE_IP -Port 3389
 
     - name: RDP Details
-      shell: powershell
-      run: |
+  shell: powershell
+  run: |
 
-        Write-Host ""
-        Write-Host "==============================="
-        Write-Host "Address  : $env:TAILSCALE_IP"
-        Write-Host "Username : RDP"
-        Write-Host "Password : $env:RDP_PASSWORD"
-        Write-Host "==============================="
+    Write-Output ""
+    Write-Output "==============================="
+    Write-Output "RDP READY"
+    Write-Output "Address  : $env:TAILSCALE_IP"
+    Write-Output "Username : RDP"
+    Write-Output "Password : $env:RDP_PASSWORD"
+    Write-Output "==============================="
 
-        while($true){
-            Start-Sleep 300
-        }
+    [Console]::Out.Flush()
+
+    while ($true) {
+      Start-Sleep -Seconds 300
+    }
