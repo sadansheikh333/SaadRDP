@@ -28,7 +28,7 @@ jobs:
             Remove-LocalUser -Name "RDP"
         }
 
-        $password=[System.Web.Security.Membership]::GeneratePassword(18,4)
+        $password = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 16 | ForEach-Object {[char]$_})
 
         $secure=ConvertTo-SecureString $password -AsPlainText -Force
 
