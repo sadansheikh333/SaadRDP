@@ -1,14 +1,100 @@
-- name: Establish Tailscale Connection
-  shell: powershell
-  run: |
-    $ErrorActionPreference = "Stop"
+name: RDP
 
-    & "$env:ProgramFiles\Tailscale\tailscale.exe" version
+on:
+  workflow_dispatch:
 
-    & "$env:ProgramFiles\Tailscale\tailscale.exe" up `
-      --authkey="${{ secrets.TAILSCALE_AUTH_KEY }}" `
-      --hostname="gh-runner-$env:GITHUB_RUN_ID" `
-      --accept-routes=false
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 360
 
-    & "$env:ProgramFiles\Tailscale\tailscale.exe" status
-    & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+    steps:
+
+    - name: Enable RDP
+      shell: powershell
+      run: |
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+        Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0
+
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+        Restart-Service TermService -Force
+
+    - name: Create User
+      shell: powershell
+      run: |
+
+        if (Get-LocalUser -Name "RDP" -ErrorAction SilentlyContinue) {
+            Remove-LocalUser -Name "RDP"
+        }
+
+        $password=[System.Web.Security.Membership]::GeneratePassword(18,4)
+
+        $secure=ConvertTo-SecureString $password -AsPlainText -Force
+
+        New-LocalUser -Name "RDP" -Password $secure
+
+        Add-LocalGroupMember -Group Administrators -Member RDP
+
+        Add-LocalGroupMember -Group "Remote Desktop Users" -Member RDP
+
+        echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
+
+    - name: Install Tailscale
+      shell: powershell
+      run: |
+
+        Invoke-WebRequest `
+        https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi `
+        -OutFile tailscale.msi
+
+        Start-Process msiexec.exe `
+        -ArgumentList "/i tailscale.msi /quiet /norestart" `
+        -Wait
+
+    - name: Connect Tailscale
+      shell: powershell
+      run: |
+
+        $ts="$env:ProgramFiles\Tailscale\tailscale.exe"
+
+        & $ts version
+
+        & $ts up `
+        --authkey="${{ secrets.TAILSCALE_AUTH_KEY }}" `
+        --hostname="GitHub-$env:GITHUB_RUN_ID" `
+        --accept-routes `
+        --reset
+
+        Start-Sleep 15
+
+        & $ts status
+
+        $ip=& $ts ip -4
+
+        if(!$ip){
+            throw "Tailscale IP not found."
+        }
+
+        echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+
+    - name: Verify
+      shell: powershell
+      run: |
+
+        Test-NetConnection $env:TAILSCALE_IP -Port 3389
+
+    - name: RDP Details
+      shell: powershell
+      run: |
+
+        Write-Host ""
+        Write-Host "==============================="
+        Write-Host "Address  : $env:TAILSCALE_IP"
+        Write-Host "Username : RDP"
+        Write-Host "Password : $env:RDP_PASSWORD"
+        Write-Host "==============================="
+
+        while($true){
+            Start-Sleep 300
+        }
